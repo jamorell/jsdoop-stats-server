@@ -1,0 +1,104 @@
+version: "3.9"
+services:
+  #https://bidhankhatri.com.np/system/docker-compose-file-for-mysql-and-phpmyadmin/
+
+  db:
+    image: mysql:8.0
+    command: --default-authentication-plugin=mysql_native_password 
+    restart: always
+    healthcheck:
+      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - 61111:3306
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: jsdoop
+    networks:
+      - proxynet
+
+  adminer:
+    image: adminer
+    restart: always
+    ports:
+      - 8080:8080
+    networks:
+      - proxynet
+
+  phpmyadmin:
+    depends_on:
+      db:
+        condition: service_healthy
+    image: phpmyadmin/phpmyadmin
+    container_name: phpmyadmin
+    restart: always
+    ports:
+      - '61112:80'
+    environment:
+      PMA_HOST: db
+    networks:
+      - proxynet
+
+
+  #https://zgadzaj.com/development/docker/docker-compose/containers/rabbitmq
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    restart: always
+    healthcheck:
+      test: rabbitmq-diagnostics -q status
+      interval: 30s
+      timeout: 30s
+      retries: 3
+    container_name: rabbitmq
+    ports:
+      - 5672:5672
+      - 15672:15672
+    networks:
+      - proxynet
+
+  #https://kb.objectrocket.com/redis/run-redis-with-docker-compose-1055
+  redis:
+    image: "redis:alpine"
+    container_name: redis
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+    # command redis-server #redis-server --requirepass sOmE_sEcUrE_pAsS
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    environment:
+      - REDIS_REPLICATION_MODE=master
+    networks:
+      - proxynet
+
+  jsdoop-stats-server:
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    build: .
+    ports:
+      - "8082:8082"
+    links: 
+      - db:db
+    command: python ./stats_server.py
+    networks:
+      - proxynet
+
+
+networks:
+  proxynet:
+    name: jsdoop_network
+
+
